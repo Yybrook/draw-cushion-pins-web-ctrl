@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DeveloperToolsToolWindowSettingsV1" lastSelectedContentNodeId="json-schema-validator" pluginVersion="7.1.0">
+    <developerToolsConfigurations>
+      <developerToolConfiguration developerToolId="json-schema-validator" id="6827d78b-8b3f-4b3c-ba9c-9cfd41abbb56" name="Workbench">
+        <properties>
+          <property key="schemaText" type="INPUT" value="kotlin.String|{&quot;result&quot;:&quot;check right&quot;,&quot;picture&quot;:&quot;.\\PinsCtrlData\\DetectionRecords\\DetectionPictures\\Detection_5-100_PART1_RIGHT_20260105102314728853.jpg&quot;}" />
+        </properties>
+      </developerToolConfiguration>
+      <developerToolConfiguration developerToolId="json-path" id="6050d319-7a7f-4497-bc6b-2f3a9a6c6533" name="Workbench">
+        <properties>
+          <property key="sourceText" type="INPUT" value="kotlin.String|{&quot;command&quot;:&quot;open and check&quot;,&quot;userDefined&quot;:&quot;0&quot;,&quot;line&quot;:&quot;5-100&quot;,&quot;model&quot;:&quot;PART1&quot;}&#10;" />
+        </properties>
+      </developerToolConfiguration>
+    </developerToolsConfigurations>
+  </component>
+</project>

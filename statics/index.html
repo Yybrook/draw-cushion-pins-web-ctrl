@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <link rel="manifest" href="/statics/pwa/manifest.json">
+    <meta name="theme-color" content="#2563eb">
+
+    <meta charset="UTF-8">
+    <title>Pins Check Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        :root {
+            --bg: #f4f6f8;
+            --card: #ffffff;
+            --primary: #2563eb;
+            --ok: #16a34a;
+            --ng: #dc2626;
+            --border: #e5e7eb;
+        }
+
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont;
+            background: var(--bg);
+        }
+
+        .container {
+            max-width: 960px;
+            margin: auto;
+            padding: 20px;
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .panel {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, .06);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 15px;
+        }
+
+        button, select {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            font-size: 14px;
+        }
+
+        button {
+            background: var(--primary);
+            color: #fff;
+            cursor: pointer;
+        }
+
+        button.secondary {
+            background: #6b7280;
+        }
+
+        button:hover {
+            opacity: .9;
+        }
+
+        #result {
+            margin-top: 20px;
+            padding: 14px;
+            border-radius: 8px;
+            font-size: 16px;
+            text-align: center;
+            background: #f9fafb;
+            border: 1px solid var(--border);
+        }
+
+        .ok {
+            color: var(--ok);
+            font-weight: bold;
+        }
+
+        .ng {
+            color: var(--ng);
+            font-weight: bold;
+        }
+
+        /* ===== 图片蒙版 ===== */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .55);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .overlay img {
+            max-width: 90%;
+            max-height: 80%;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, .5);
+            background: #fff;
+        }
+
+        .overlay.show {
+            display: flex;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+    <h2>拉深垫顶棒检测</h2>
+
+    <div class="panel">
+        <div class="grid">
+            <button onclick="connectServer()">连接服务器</button>
+            <button class="secondary" onclick="disconnectServer()">断开服务器</button>
+
+            <button onclick="enumDevices()">枚举设备</button>
+            <select id="deviceSelect">
+                <option value="">请选择相机</option>
+            </select>
+
+            <select id="lineSelect" onchange="enumParts()">
+                <option value="">请选择生产线</option>
+            </select>
+
+            <select id="partSelect">
+                <option value="">请选择零件号</option>
+            </select>
+
+            <button onclick="doCheck()">Check</button>
+        </div>
+
+        <!-- 结果永远在最下方 -->
+        <div id="result">等待检测</div>
+
+        <button id="showResultBtn"
+                style="margin-top:12px; display:none;"
+                onclick="showResultImage()">
+            显示结果
+        </button>
+    </div>
+</div>
+
+<!-- 图片蒙版 -->
+<div class="overlay" id="imgOverlay" onclick="hideImage()">
+    <img id="overlayImg">
+</div>
+
+<script>
+    const SERVER_HOST = "127.0.0.1";
+    const SERVER_PORT = 2525;
+    const URL_BASE = `/ctrl`;
+
+    let lastPictureUrl = "";
+
+    async function apiGet(url) {
+        const resp = await fetch(url);
+        return await resp.json();
+    }
+
+    async function connectServer() {
+        const res = await apiGet(`${URL_BASE}/connect?host=${SERVER_HOST}&port=${SERVER_PORT}`);
+        alert(res.res ? "连接成功" : res.info);
+    }
+
+    async function disconnectServer() {
+        await apiGet(`${URL_BASE}/disconnect`);
+        alert("已断开");
+    }
+
+    async function enumDevices() {
+        deviceSelect.innerHTML = '<option value="">请选择相机</option>';
+        lineSelect.innerHTML = '<option value="">请选择生产线</option>';
+        partSelect.innerHTML = '<option value="">请选择零件号</option>';
+
+        const res = await apiGet(`${URL_BASE}/enum_devices`);
+        if (!res.res) return alert(res.info);
+
+        res.info.forEach(v => deviceSelect.add(new Option(v, v)));
+        enumLines();
+    }
+
+    async function enumLines() {
+        lineSelect.innerHTML = '<option value="">请选择生产线</option>';
+        partSelect.innerHTML = '<option value="">请选择零件号</option>';
+
+        const res = await apiGet(`${URL_BASE}/enum_lines`);
+        if (!res.res) return alert(res.info);
+
+        res.info.forEach(v => lineSelect.add(new Option(v, v)));
+    }
+
+    async function enumParts() {
+        const line = lineSelect.value;
+        partSelect.innerHTML = '<option value="">请选择零件号</option>';
+        if (!line) return;
+
+        const res = await apiGet(`${URL_BASE}/enum_parts?line=${encodeURIComponent(line)}`);
+        if (!res.res) return alert(res.info);
+
+        res.info.forEach(v => partSelect.add(new Option(v, v)));
+    }
+
+    // async function doCheck() {
+    //     if (!deviceSelect.value || !lineSelect.value || !partSelect.value) {
+    //         return alert("请先选择完整参数");
+    //     }
+    //
+    //     result.innerHTML = "检测中...";
+    //
+    //     const res = await apiGet(
+    //         `${URL_BASE}/check?device=${deviceSelect.value}&line=${encodeURIComponent(lineSelect.value)}&part=${encodeURIComponent(partSelect.value)}`
+    //     );
+    //
+    //     if (!res.res) {
+    //         result.innerHTML = res.info;
+    //         return;
+    //     }
+    //
+    //     result.innerHTML = res.checkResult
+    //         ? `<span class="ok">✔ 检测 OK</span>`
+    //         : `<span class="ng">✘ 检测 NG</span>`;
+    //
+    //     showImage(res.picture);
+    // }
+    async function doCheck() {
+        if (!deviceSelect.value || !lineSelect.value || !partSelect.value) {
+            return alert("请先选择完整参数");
+        }
+
+        result.innerHTML = "检测中...";
+        showResultBtn.style.display = "none";
+        lastPictureUrl = "";
+
+        const res = await apiGet(
+            `${URL_BASE}/check?device=${deviceSelect.value}&line=${encodeURIComponent(lineSelect.value)}&part=${encodeURIComponent(partSelect.value)}`
+        );
+
+        if (!res.res) {
+            result.innerHTML = res.info;
+            return;
+        }
+
+        result.innerHTML = res.checkResult
+            ? `<span class="ok">✔ 检测 OK</span>`
+            : `<span class="ng">✘ 检测 NG</span>`;
+
+        // 保存图片地址，但不显示
+        lastPictureUrl = res.picture;
+
+        // 显示“显示结果”按钮
+        showResultBtn.style.display = "block";
+    }
+
+
+    function showImage(url) {
+        overlayImg.src = url;
+        imgOverlay.classList.add("show");
+    }
+
+    function hideImage() {
+        imgOverlay.classList.remove("show");
+        overlayImg.src = "";
+    }
+
+    function showResultImage() {
+        if (!lastPictureUrl) {
+            alert("暂无检测图片");
+            return;
+        }
+        showImage(lastPictureUrl);
+    }
+
+
+    if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+            navigator.serviceWorker.register("/statics/pwa/sw.js")
+                .then(() => console.log("PWA Service Worker registered"))
+                .catch(err => console.error("SW register failed:", err));
+        });
+    }
+
+</script>
+
+</body>
+</html>

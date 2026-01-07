@@ -7,4 +7,7 @@
     <orderEntry type="jdk" jdkName="uv (draw-cushion-pins-web-ctrl)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
+  <component name="PackageRequirementsSettings">
+    <option name="versionSpecifier" value="强相等 (==x.y.z)" />
+  </component>
 </module>

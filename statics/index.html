@@ -1,12 +1,11 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pins Check</title>
     <link rel="manifest" href="/statics/pwa/manifest.json">
     <meta name="theme-color" content="#2563eb">
-
-    <meta charset="UTF-8">
-    <title>Pins Check Panel</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <style>
         :root {
@@ -15,7 +14,11 @@
             --primary: #2563eb;
             --ok: #16a34a;
             --ng: #dc2626;
+            --warning: #92400e;
             --border: #e5e7eb;
+            --tcp-bg-ok: #f0fdf4;
+            --tcp-bg-ng: #fef2f2;
+            --tcp-bg-warn: #fffbeb;
         }
 
         body {
@@ -48,6 +51,19 @@
             gap: 15px;
         }
 
+        .select-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 4px; /* 标签和下拉框之间的间距 */
+        }
+
+        .select-wrapper label {
+            font-size: 14px;
+            font-weight: 500;
+            color: #374151; /* 深色文本 */
+        }
+
+
         button, select {
             width: 100%;
             padding: 10px;
@@ -57,18 +73,40 @@
         }
 
         button {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--primary);
+            font-size: 14px;
+
             background: var(--primary);
             color: #fff;
             cursor: pointer;
+
+            transition: transform 0.1s ease, box-shadow 0.1s ease, opacity 0.2s;
         }
 
-        button.secondary {
-            background: #6b7280;
+        /* 悬停效果，只对可点击按钮有效 */
+        button:hover:not(:disabled) {
+            opacity: 0.9;
         }
 
-        button:hover {
-            opacity: .9;
+        /* 按下效果，只对可点击按钮有效 */
+        button:active:not(:disabled) {
+            transform: translateY(2px); /* 下沉效果 */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            opacity: 0.85;
         }
+
+        /* 禁用按钮样式 */
+        button:disabled {
+            background: #9ca3af; /* 灰色 */
+            color: #f3f4f6;
+            cursor: not-allowed;
+            opacity: 0.6;
+            box-shadow: none;
+        }
+
 
         #result {
             margin-top: 20px;
@@ -90,12 +128,12 @@
             font-weight: bold;
         }
 
-        /* ===== 图片蒙版 ===== */
+        /* 图片蒙版 */
         .overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, .55);
             display: none;
+            background: rgba(0, 0, 0, .55);
             align-items: center;
             justify-content: center;
             z-index: 1000;
@@ -112,43 +150,60 @@
         .overlay.show {
             display: flex;
         }
+
+        #tcpStatus {
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 16px;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        #showResultBtn {
+            margin-top: 12px;
+            display: none;
+        }
+
     </style>
 </head>
-
 <body>
 
 <div class="container">
     <h2>拉深垫顶棒检测</h2>
-
     <div class="panel">
+        <div id="tcpStatus">正在连接服务器...</div>
+
         <div class="grid">
-            <button onclick="connectServer()">连接服务器</button>
-            <button class="secondary" onclick="disconnectServer()">断开服务器</button>
+            <button onclick="enumDevices()" disabled>枚举设备</button>
+            <div class="select-wrapper">
+                <label for="deviceSelect">相机</label>
+                <select id="deviceSelect">
+                    <!--                    <option value="">请选择相机</option>-->
+                    <option value="5-100">5-100</option> <!-- 默认选项 -->
+                </select>
+            </div>
 
-            <button onclick="enumDevices()">枚举设备</button>
-            <select id="deviceSelect">
-                <option value="">请选择相机</option>
-            </select>
+            <div class="select-wrapper">
+                <label for="lineSelect">生产线</label>
+                <select id="lineSelect" onchange="enumParts()">
+                    <!--                    <option value="">请选择生产线</option>-->
+                    <option value="5-100">5-100</option> <!-- 默认选项 -->
+                </select>
+            </div>
 
-            <select id="lineSelect" onchange="enumParts()">
-                <option value="">请选择生产线</option>
-            </select>
-
-            <select id="partSelect">
-                <option value="">请选择零件号</option>
-            </select>
+            <div class="select-wrapper">
+                <label for="partSelect">零件号</label>
+                <select id="partSelect">
+                    <option value="">请选择零件号</option>
+                </select>
+            </div>
 
             <button onclick="doCheck()">Check</button>
         </div>
 
-        <!-- 结果永远在最下方 -->
         <div id="result">等待检测</div>
-
-        <button id="showResultBtn"
-                style="margin-top:12px; display:none;"
-                onclick="showResultImage()">
-            显示结果
-        </button>
+        <button id="showResultBtn" onclick="showResultImage()">显示结果</button>
     </div>
 </div>
 
@@ -160,44 +215,99 @@
 <script>
     const SERVER_HOST = "127.0.0.1";
     const SERVER_PORT = 2525;
-    const URL_BASE = `/ctrl`;
+    const URL_BASE = "/ctrl";
 
     let lastPictureUrl = "";
+    let tcpConnected = false;
+    let tcpConnecting = false;
 
+    // 通用 GET 请求
     async function apiGet(url) {
         const resp = await fetch(url);
         return await resp.json();
     }
 
-    async function connectServer() {
-        const res = await apiGet(`${URL_BASE}/connect?host=${SERVER_HOST}&port=${SERVER_PORT}`);
-        alert(res.res ? "连接成功" : res.info);
+    // TCP 状态显示
+    function setTcpStatus(state) {
+        const el = document.getElementById("tcpStatus");
+        if (state === "connected") {
+            el.textContent = "服务器已连接";
+            el.style.color = "var(--ok)";
+            el.style.background = "var(--tcp-bg-ok)";
+            el.style.borderColor = "var(--ok)";
+        } else if (state === "connecting") {
+            el.textContent = "正在连接服务器...";
+            el.style.color = "var(--warning)";
+            el.style.background = "var(--tcp-bg-warn)";
+            el.style.borderColor = "var(--warning)";
+        } else {
+            el.textContent = "服务器未连接";
+            el.style.color = "var(--ng)";
+            el.style.background = "var(--tcp-bg-ng)";
+            el.style.borderColor = "var(--ng)";
+        }
     }
 
-    async function disconnectServer() {
-        await apiGet(`${URL_BASE}/disconnect`);
-        alert("已断开");
+    // 自动连接
+    async function autoConnect() {
+        if (tcpConnected || tcpConnecting) return;
+        tcpConnecting = true;
+        setTcpStatus("connecting");
+        try {
+            const res = await apiGet(`${URL_BASE}/connect?host=${SERVER_HOST}&port=${SERVER_PORT}`);
+            tcpConnected = !!res.res;
+            setTcpStatus(tcpConnected ? "connected" : "disconnected");
+        } catch {
+            tcpConnected = false;
+            setTcpStatus("disconnected");
+        } finally {
+            tcpConnecting = false;
+        }
     }
 
+    // 定时更新 TCP 状态
+    async function updateTcpStatus() {
+        try {
+            const res = await apiGet(`${URL_BASE}/tcp_status`);
+            tcpConnected = !!res.res;
+            setTcpStatus(tcpConnected ? "connected" : "disconnected");
+            if (!tcpConnected) await autoConnect();
+        } catch {
+            tcpConnected = false;
+            setTcpStatus("disconnected");
+            await autoConnect();
+        }
+    }
+
+    // 枚举设备 / 生产线 / 零件号
     async function enumDevices() {
+        if (!tcpConnected) {
+            alert("TCP 服务器未连接");
+            return;
+        }
+
         deviceSelect.innerHTML = '<option value="">请选择相机</option>';
         lineSelect.innerHTML = '<option value="">请选择生产线</option>';
         partSelect.innerHTML = '<option value="">请选择零件号</option>';
 
         const res = await apiGet(`${URL_BASE}/enum_devices`);
-        if (!res.res) return alert(res.info);
-
+        if (!res.res) {
+            alert(res.info);
+            return;
+        }
         res.info.forEach(v => deviceSelect.add(new Option(v, v)));
-        enumLines();
+        await enumLines();
+        alert("枚举相机成功");
     }
 
     async function enumLines() {
         lineSelect.innerHTML = '<option value="">请选择生产线</option>';
         partSelect.innerHTML = '<option value="">请选择零件号</option>';
-
         const res = await apiGet(`${URL_BASE}/enum_lines`);
-        if (!res.res) return alert(res.info);
-
+        if (!res.res) {
+            alert(res.info);
+            return;
+        }
         res.info.forEach(v => lineSelect.add(new Option(v, v)));
     }
 
@@ -205,48 +315,30 @@
         const line = lineSelect.value;
         partSelect.innerHTML = '<option value="">请选择零件号</option>';
         if (!line) return;
-
         const res = await apiGet(`${URL_BASE}/enum_parts?line=${encodeURIComponent(line)}`);
-        if (!res.res) return alert(res.info);
-
+        if (!res.res) {
+            alert(res.info);
+            return;
+        }
         res.info.forEach(v => partSelect.add(new Option(v, v)));
     }
 
-    // async function doCheck() {
-    //     if (!deviceSelect.value || !lineSelect.value || !partSelect.value) {
-    //         return alert("请先选择完整参数");
-    //     }
-    //
-    //     result.innerHTML = "检测中...";
-    //
-    //     const res = await apiGet(
-    //         `${URL_BASE}/check?device=${deviceSelect.value}&line=${encodeURIComponent(lineSelect.value)}&part=${encodeURIComponent(partSelect.value)}`
-    //     );
-    //
-    //     if (!res.res) {
-    //         result.innerHTML = res.info;
-    //         return;
-    //     }
-    //
-    //     result.innerHTML = res.checkResult
-    //         ? `<span class="ok">✔ 检测 OK</span>`
-    //         : `<span class="ng">✘ 检测 NG</span>`;
-    //
-    //     showImage(res.picture);
-    // }
+    // 执行检测
     async function doCheck() {
+        if (!tcpConnected) {
+            alert("TCP 服务器未连接");
+            return;
+        }
         if (!deviceSelect.value || !lineSelect.value || !partSelect.value) {
-            return alert("请先选择完整参数");
+            alert("请先选择完整参数");
+            return;
         }
 
         result.innerHTML = "检测中...";
         showResultBtn.style.display = "none";
         lastPictureUrl = "";
 
-        const res = await apiGet(
-            `${URL_BASE}/check?device=${deviceSelect.value}&line=${encodeURIComponent(lineSelect.value)}&part=${encodeURIComponent(partSelect.value)}`
-        );
-
+        const res = await apiGet(`${URL_BASE}/check?device=${deviceSelect.value}&line=${encodeURIComponent(lineSelect.value)}&part=${encodeURIComponent(partSelect.value)}`);
         if (!res.res) {
             result.innerHTML = res.info;
             return;
@@ -256,14 +348,11 @@
             ? `<span class="ok">✔ 检测 OK</span>`
             : `<span class="ng">✘ 检测 NG</span>`;
 
-        // 保存图片地址，但不显示
         lastPictureUrl = res.picture;
-
-        // 显示“显示结果”按钮
         showResultBtn.style.display = "block";
     }
 
-
+    // 图片显示
     function showImage(url) {
         overlayImg.src = url;
         imgOverlay.classList.add("show");
@@ -282,16 +371,22 @@
         showImage(lastPictureUrl);
     }
 
+    // 页面初始化
+    window.addEventListener("load", async () => {
+        setTcpStatus("connecting");
+        await autoConnect();
+        await updateTcpStatus();
+        setInterval(updateTcpStatus, 5000);
 
-    if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
+        await enumParts()
+
+        if ("serviceWorker" in navigator) {
             navigator.serviceWorker.register("/statics/pwa/sw.js")
                 .then(() => console.log("PWA Service Worker registered"))
                 .catch(err => console.error("SW register failed:", err));
-        });
-    }
-
+        }
+    });
 </script>
-
 </body>
 </html>
+

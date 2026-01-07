@@ -20,13 +20,22 @@ async def root():
 
 @router.get("/connect")
 async def connect(host: str, port: int):
-    return tcp.connect(host, port)
+    res = tcp.connect(host, port)
+    if res["res"]:
+        cmd = {"command": "heartbeat"}
+        tcp.heartbeat(payload=json.dumps(cmd))
+    return res
 
 
 @router.get("/disconnect")
 async def disconnect():
     tcp.disconnect()
     return {"res": True}
+
+
+@router.get("/tcp_status")
+async def tcp_status():
+    return {"res": tcp.is_alive()}
 
 
 @router.get("/enum_devices")
@@ -154,7 +163,3 @@ async def check(device: str, line: str, part: str):
         return {"res": False, "info": "check error"}
     else:
         return {"res": False, "info": f"invalid resp[{resp}]"}
-
-
-
-
